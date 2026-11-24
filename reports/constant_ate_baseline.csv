@@ -1,0 +1,2 @@
+baseline,training_treatment_rate,training_control_rate,constant_predicted_uplift_pp
+Constant ATE,0.012515644555694618,0.005710709536102637,0.6804935019591981

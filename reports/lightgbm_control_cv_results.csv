@@ -1,0 +1,13 @@
+mean_cv_log_loss,std_cv_log_loss,mean_train_log_loss,rank,params
+0.03450548663985954,0.0013421316855356576,0.033261447557350624,1,"{'model__learning_rate': 0.05, 'model__max_depth': 3, 'model__n_estimators': 50, 'model__num_leaves': 3}"
+0.03450548663985954,0.0013421316855356576,0.033261447557350624,1,"{'model__learning_rate': 0.05, 'model__max_depth': 2, 'model__n_estimators': 50, 'model__num_leaves': 3}"
+0.03453876341002778,0.0014674640742227683,0.032635843876835526,3,"{'model__learning_rate': 0.05, 'model__max_depth': 3, 'model__n_estimators': 100, 'model__num_leaves': 3}"
+0.03453876341002778,0.0014674640742227683,0.032635843876835526,3,"{'model__learning_rate': 0.05, 'model__max_depth': 2, 'model__n_estimators': 100, 'model__num_leaves': 3}"
+0.03453929319941161,0.0012413816003328923,0.03369181568086918,5,"{'model__learning_rate': 0.03, 'model__max_depth': 3, 'model__n_estimators': 50, 'model__num_leaves': 3}"
+0.03453929319941161,0.0012413816003328923,0.03369181568086918,5,"{'model__learning_rate': 0.03, 'model__max_depth': 2, 'model__n_estimators': 50, 'model__num_leaves': 3}"
+0.034543391074653075,0.0013521164750241901,0.03310458554542229,7,"{'model__learning_rate': 0.03, 'model__max_depth': 3, 'model__n_estimators': 100, 'model__num_leaves': 3}"
+0.034543391074653075,0.0013521164750241901,0.03310458554542229,7,"{'model__learning_rate': 0.03, 'model__max_depth': 2, 'model__n_estimators': 100, 'model__num_leaves': 3}"
+0.034656646412839345,0.0013810523564687172,0.03289355963426842,9,"{'model__learning_rate': 0.03, 'model__max_depth': 3, 'model__n_estimators': 50, 'model__num_leaves': 7}"
+0.034742218171515196,0.0015385334616487443,0.03219810647456002,10,"{'model__learning_rate': 0.05, 'model__max_depth': 3, 'model__n_estimators': 50, 'model__num_leaves': 7}"
+0.03481868863114013,0.0016023105587342405,0.03192776061073831,11,"{'model__learning_rate': 0.03, 'model__max_depth': 3, 'model__n_estimators': 100, 'model__num_leaves': 7}"
+0.03510030986285918,0.0018773981836338327,0.03100797097023674,12,"{'model__learning_rate': 0.05, 'model__max_depth': 3, 'model__n_estimators': 100, 'model__num_leaves': 7}"

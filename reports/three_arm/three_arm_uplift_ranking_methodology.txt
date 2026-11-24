@@ -1,0 +1,46 @@
+THREE-ARM UPLIFT RANKING EVALUATION
+
+Data:
+- Validation split only; the untouched test split is never loaded.
+- Men's Email vs No Email and Women's Email vs No Email are primary contrasts.
+- Men's Email vs Women's Email is included as a secondary pairwise diagnostic.
+
+Ranking score:
+- For each contrast, rank customers by the model's predicted potential-outcome
+  difference: predicted outcome under the treated campaign minus predicted
+  outcome under the comparator campaign.
+
+Pairwise randomization:
+- The original experiment assigned customers equally to all three arms.
+- Conditional on belonging to a selected pair, the assignment probability is
+  0.5 for each of the two arms.
+
+Cumulative gain:
+- Each ranked customer contributes I(T=1)*Y/0.5 - I(T=0)*Y/0.5.
+- The cumulative sum estimates incremental conversions from targeting the
+  highest-scored fraction with the treated campaign instead of the comparator.
+
+Metrics:
+- AUUC: area under the cumulative gain curve, using the trapezoidal rule.
+- Qini coefficient: area under the model curve minus the area under the straight
+  random-targeting baseline connecting the origin to the full-population gain.
+- Qini and AUUC are additionally scaled per 1,000 pairwise customers.
+- Uplift@10%, @20%, and @30%: cumulative estimated incremental conversions
+  divided by the number of customers targeted, expressed in percentage points.
+- Equal prediction scores are treated as a tie block, with linear interpolation
+  through the block. This avoids arbitrary ordering of tied LightGBM scores.
+
+Uncertainty:
+- 2,000 stratified bootstrap replications, resampling separately within each
+  randomized arm while preserving the observed arm sample sizes.
+- Logistic Regression and LightGBM use the same bootstrap samples, so model
+  differences are paired.
+- Intervals are conditional on the already-trained models; they do not include
+  model-refitting uncertainty.
+
+Interpretation:
+- Positive Qini coefficient means the model ranking's cumulative gain area is
+  above the random-targeting baseline under this definition.
+- A positive Qini coefficient does not by itself prove positive policy value,
+  profitable campaign selection, or superiority over a fixed campaign.
+- Results are exploratory because conversion events are sparse.

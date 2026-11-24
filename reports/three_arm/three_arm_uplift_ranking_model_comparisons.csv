@@ -1,0 +1,19 @@
+contrast,primary_contrast,metric,difference_lr_minus_lightgbm,ci_lower,ci_upper,interpretation
+Mens_vs_No_Email,True,qini_coefficient_per_1000_customers,-0.3027331652118721,-1.5542717307065492,0.8926405582679839,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_No_Email,True,auuc_per_1000_customers,-0.3027331652118721,-1.554271730706549,0.8926405582679844,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_No_Email,True,overall_pairwise_uplift_pp,0.0,0.0,0.0,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_No_Email,True,uplift_at_10_percent_pp,0.7039774727208729,-0.703977472720873,1.9116028287094617,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_No_Email,True,uplift_at_20_percent_pp,0.0,-1.0559662090813093,1.0559662090813093,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_No_Email,True,uplift_at_30_percent_pp,0.0,-0.703977472720873,0.782197191912081,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,qini_coefficient_per_1000_customers,-0.15328060813145472,-0.9486251501406799,0.5718927049454557,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,auuc_per_1000_customers,-0.15328060813145472,-0.9486251501406797,0.5718927049454559,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,overall_pairwise_uplift_pp,0.0,0.0,0.0,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,uplift_at_10_percent_pp,-0.23419203747072598,-1.17096018735363,0.702576112412178,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,uplift_at_20_percent_pp,-0.117096018735363,-0.819672131147541,0.46838407494145207,Positive favors Logistic Regression; negative favors LightGBM.
+Womens_vs_No_Email,True,uplift_at_30_percent_pp,-0.156128024980484,-0.624512099921936,0.312256049960968,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,qini_coefficient_per_1000_customers,0.019461144097758093,-1.0446074246308221,1.1489014650456244,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,auuc_per_1000_customers,0.01946114409775812,-1.0446074246308221,1.1489014650456244,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,overall_pairwise_uplift_pp,0.0,0.0,0.0,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,uplift_at_10_percent_pp,0.0,-1.1710973181871414,1.1710973181871414,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,uplift_at_20_percent_pp,-0.11710973181871409,-1.0539875863684272,0.9140414568450713,Positive favors Logistic Regression; negative favors LightGBM.
+Mens_vs_Womens_Email,False,uplift_at_30_percent_pp,0.2342194636374283,-0.7026583909122849,1.0930241636413323,Positive favors Logistic Regression; negative favors LightGBM.

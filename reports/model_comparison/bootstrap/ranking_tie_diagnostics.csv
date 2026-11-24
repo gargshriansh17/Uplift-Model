@@ -1,0 +1,4 @@
+model,total_customers,unique_uplift_scores,customers_in_tied_groups,tied_customer_percentage,largest_tie_group
+Logistic T-Learner,8523,7735,1013,11.88548633110407,13
+S-Learner,8523,7735,1013,11.88548633110407,13
+LightGBM T-Leaner,8523,2080,7722,90.60190073917634,58

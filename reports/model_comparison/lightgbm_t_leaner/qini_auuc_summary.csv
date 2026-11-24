@@ -1,0 +1,2 @@
+model,model_auuc,random_auuc,qini_coefficient
+LightGBM T-Leaner,0.29165459118566184,0.3286302017215277,-0.036975610535865844

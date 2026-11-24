@@ -1,0 +1,16 @@
+policy,recommended_campaign,customers,share_percent
+Always No Email,No Email,12801,100.0
+Always No Email,Mens E-Mail,0,0.0
+Always No Email,Womens E-Mail,0,0.0
+Always Mens Email,No Email,0,0.0
+Always Mens Email,Mens E-Mail,12801,100.0
+Always Mens Email,Womens E-Mail,0,0.0
+Always Womens Email,No Email,0,0.0
+Always Womens Email,Mens E-Mail,0,0.0
+Always Womens Email,Womens E-Mail,12801,100.0
+Logistic Regression policy,No Email,282,2.2029528943051324
+Logistic Regression policy,Mens E-Mail,11149,87.09475822201391
+Logistic Regression policy,Womens E-Mail,1370,10.702288883680962
+LightGBM policy,No Email,151,1.179595344113741
+LightGBM policy,Mens E-Mail,10192,79.61877978282946
+LightGBM policy,Womens E-Mail,2458,19.20162487305679

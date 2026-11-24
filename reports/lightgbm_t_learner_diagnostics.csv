@@ -1,0 +1,3 @@
+model,arm,sample_size,conversions,log_loss,brier_score
+LightGBM T-Learner,Treatment,4261,53,0.06726780693809137,0.012289203739089849
+LightGBM T-Learner,Control,4262,25,0.035640380381288056,0.005829561395752037

@@ -1,0 +1,3 @@
+model,arm,sample_size,conversions,log_loss,brier_score
+S-Learner,Treatment,4261,53,0.06776683267093277,0.012300833991100022
+S-Learner,Control,4262,25,0.035873268905339886,0.005831089912184387

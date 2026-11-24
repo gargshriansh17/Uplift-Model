@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Large generated files (re-create with `python main.py`)
+artifacts/*.joblib
+artifacts/**/*.joblib
+reports/repeated_oof/oof_predictions_*.csv
+reports/**/*_validation_predictions.csv
+reports/**/*_test_predictions.csv
+reports/**/bootstrap_distributions.csv
+reports/final_test/lightgbm_test_bootstrap_distribution.csv
+data/processed/*.csv
+data/processed/feature_experiments/
+data/processed/three_arm/*.csv
+
+# Keep placeholders and the raw dataset out of git too (download it, see README)
+data/raw/*.csv
+
+!.gitkeep
