@@ -1,5 +1,13 @@
 # Uplift Modelling on the Hillstrom Email Campaign
 
+![tests](https://github.com/gargshriansh17/Uplift-Model/actions/workflows/tests.yml/badge.svg)
+
+**TL;DR**
+
+- **Task:** estimate the *incremental* effect of a marketing email on purchase, using a randomized 64,000-customer experiment (Hillstrom).
+- **Finding:** the email campaign clearly works (0.57% to 1.25% conversion), but no uplift model could be shown to beat random targeting at this sample size.
+- **What this project demonstrates:** leakage-safe splits, bootstrap and repeated out-of-fold evaluation, a held-out test split scored once, and honest reporting of a null result.
+
 Which customers should receive a marketing email? This project builds and
 rigorously evaluates uplift models that estimate the *incremental* effect of an
 email on purchase conversion, rather than just who is likely to buy.
@@ -10,7 +18,8 @@ within twelve months and were randomly assigned to a Men's Email, a Women's
 Email or No Email; conversion is a purchase on the site in the following two
 weeks. Download it from the
 [original challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html)
-and save it as `data/raw/hillstrom.csv`.
+and save it as `data/raw/hillstrom.csv`. The dataset is not committed to this
+repository.
 
 ## Key findings
 
@@ -27,6 +36,16 @@ and save it as `data/raw/hillstrom.csv`.
 - **A fixed "Always Men's Email" policy is a strong benchmark.** In the
   three-arm policy evaluation the model-based policies did not significantly
   beat it (table below).
+
+### Figures
+
+**The campaign works:** conversion by campaign group.
+
+![Conversion by campaign](reports/figures/conversion_by_campaign.png)
+
+**Qini curve, Men's Email vs No Email (three-arm analysis, validation split):**
+
+![Qini curve, Men's Email vs No Email](reports/three_arm/figures/qini_mens_vs_no_email.png)
 
 ### Model selection (Men's Email vs No Email)
 
@@ -53,6 +72,10 @@ The test split is scored once, by `python main.py final-test`. The model is the
 LightGBM T-Learner, using the hyper-parameters chosen on validation and refit on
 train + validation, with the Logistic T-Learner as baseline. Results are written
 to `reports/final_test/`.
+
+![Final-test Qini curves](reports/figures/qini_final_test.png)
+
+*Both curves stay close to random targeting; see the intervals below.*
 
 Test split: 8,523 customers, observed average effect 0.70 pp. Brackets show
 95% bootstrap intervals.
@@ -97,11 +120,13 @@ src/
   config.py, data_preprocessing.py, feature_engineering.py, eda.py
   evaluation.py, model_comparison.py, bootstrap_evaluation.py
   repeated_oof_evaluation.py, final_test_evaluation.py
+  plot_final_test.py   redraws the final-test figure from saved results
   models/   t_learner, s_learner, lightgbm_t_learner, three_arm_*
 tests/      unit tests for the metrics and split safety
 reports/    metrics, curves and figures
 artifacts/  trained models (not committed)
 data/       raw and processed data (not committed)
+.github/    CI workflow that runs the unit tests
 main.py     pipeline runner
 ```
 
@@ -109,12 +134,35 @@ main.py     pipeline runner
 
 Requires Python 3.11 or later.
 
+**1. Set up an environment**
+
 ```bash
+# Windows (PowerShell)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+python -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
+```
+
+**2. Get the data**
+
+Download the Hillstrom dataset from the
+[original challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html)
+and save it as `data/raw/hillstrom.csv` (create the `data/raw/` folder if it
+does not exist).
+
+**3. Run the pipeline**
+
+```bash
 python main.py --list          # show stages
 python main.py all             # reproduce model selection
 python main.py final-test      # run ONCE, last
-python -m pytest tests         # run unit tests
+python src/plot_final_test.py  # redraw the final-test figure from saved results
+python -m pytest tests         # run unit tests (no dataset needed)
 ```
 
 All random seeds are fixed (`RANDOM_STATE = 42` in `src/config.py`).
@@ -130,3 +178,7 @@ All random seeds are fixed (`RANDOM_STATE = 42` in `src/config.py`).
   coarse.
 - The final test evaluation covers Men's Email vs No Email only; the three-arm
   results are validation-split estimates.
+
+## License
+
+MIT. See `LICENSE`.
