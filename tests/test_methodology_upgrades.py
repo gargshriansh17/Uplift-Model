@@ -76,3 +76,41 @@ def test_hc3_robust_score_test_reduces_duplicate_interactions_to_estimable_rank(
     assert len(result["selected_interaction_indices"]) == 1
     assert np.isfinite(result["statistic"])
     assert 0.0 <= result["p_value"] <= 1.0
+
+
+
+def test_covariate_selection_preserves_intercept_and_treatment_controls():
+    from src.heterogeneity_test import _select_covariates_after_controls
+
+    rng = np.random.default_rng(19)
+    n = 1200
+    treatment = rng.binomial(1, 0.5, size=n).astype(float)
+    controls = np.column_stack([np.ones(n), treatment])
+    x = rng.normal(size=n)
+    candidates = np.column_stack([
+        x,
+        x,  # duplicate covariate
+        treatment,  # aliased with mandatory treatment control
+        np.ones(n),  # aliased with intercept
+        rng.normal(size=n),
+    ])
+
+    selected, selected_indices = _select_covariates_after_controls(
+        controls, candidates
+    )
+    restricted = np.column_stack([controls, selected])
+
+    assert len(selected_indices) == 2
+    assert np.linalg.matrix_rank(restricted) == restricted.shape[1]
+    assert np.allclose(selected, candidates[:, selected_indices])
+
+
+def test_covariate_selection_rejects_rank_deficient_mandatory_controls():
+    import pytest
+    from src.heterogeneity_test import _select_covariates_after_controls
+
+    controls = np.column_stack([np.ones(10), np.ones(10)])
+    candidates = np.arange(20, dtype=float).reshape(10, 2)
+
+    with pytest.raises(ValueError, match="Mandatory intercept/treatment controls"):
+        _select_covariates_after_controls(controls, candidates)
