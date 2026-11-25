@@ -182,7 +182,7 @@ Outputs are saved under `reports/nested_cv/`. Nested CV is computationally more 
 
 ### Formal treatment-effect heterogeneity test
 
-`src/heterogeneity_test.py` tests the existing two-arm experiment only: Men's Email vs No Email. It compares a constant-effect linear probability model with a treatment-by-feature interaction model and reports an HC3-robust joint Wald test, including the effective covariance rank. Women's Email is part of the separate three-arm evaluation and is not tested using the two-arm development files. This is a global exploratory test, not a guarantee that individual CATE estimates are accurate.
+`src/heterogeneity_test.py` tests the existing two-arm experiment only: Men's Email vs No Email. It compares a constant-effect linear probability model with a treatment-by-feature interaction model using an HC3-robust score test under the restricted constant-effect model. The test reports the interaction-design and robust score-covariance ranks, and stops without a p-value if either is deficient. Women's Email is part of the separate three-arm evaluation and is not tested using the two-arm development files. This is a global test of the specified linear interaction basis, not a guarantee that individual CATE estimates are accurate.
 
 Run: `python -m src.heterogeneity_test`.
 
