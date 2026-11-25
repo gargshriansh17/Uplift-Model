@@ -53,21 +53,26 @@ def test_hc3_robust_score_test_returns_full_rank_omnibus_result():
     assert 0.0 <= result["p_value"] <= 1.0
 
 
-def test_hc3_robust_score_test_rejects_duplicate_interaction_columns():
-    import pytest
+def test_hc3_robust_score_test_reduces_duplicate_interactions_to_estimable_rank():
     from src.heterogeneity_test import _hc3_robust_score_test
 
     rng = np.random.default_rng(7)
-    n = 500
+    n = 1500
     treatment = rng.binomial(1, 0.5, size=n)
     feature = rng.normal(size=n)
     restricted = np.column_stack([np.ones(n), feature, treatment])
     interaction = feature * treatment
     duplicated_interactions = np.column_stack([interaction, interaction])
 
-    with pytest.raises(ValueError, match="interaction design is rank deficient"):
-        _hc3_robust_score_test(
-            rng.binomial(1, 0.3, size=n),
-            restricted,
-            duplicated_interactions,
-        )
+    result = _hc3_robust_score_test(
+        rng.binomial(1, 0.3, size=n),
+        restricted,
+        duplicated_interactions,
+    )
+
+    assert result["interaction_design_rank"] == 1
+    assert result["covariance_rank"] == 1
+    assert result["degrees_freedom"] == 1
+    assert len(result["selected_interaction_indices"]) == 1
+    assert np.isfinite(result["statistic"])
+    assert 0.0 <= result["p_value"] <= 1.0
