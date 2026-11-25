@@ -6,10 +6,11 @@ adds treatment-by-feature interactions, testing whether the conditional
 conversion-probability treatment effect varies with observed features.
 
 The joint test is an HC3-robust score test evaluated under the restricted
-(constant-effect) model. This avoids relying on the potentially unstable
-interaction-block covariance from the unrestricted model. It remains a global
-test of the specified linear interaction basis, not proof that individual
-CATE estimates are accurate.
+(constant-effect) model. Treatment interactions that are aliased with the
+restricted design are excluded through a pivoted-QR estimability check; the
+effective degrees of freedom are reported rather than overstated. This is a
+global test of the estimable linear interaction basis, not proof that
+individual CATE estimates are accurate.
 """
 import numpy as np
 import pandas as pd
@@ -37,13 +38,43 @@ def _independent_columns(matrix):
     return matrix[:, selected]
 
 
-def _hc3_robust_score_test(y, restricted_design, interaction_design):
-    """HC3-robust score test for omitted interaction terms.
+def _estimable_interaction_columns(restricted_design, interaction_design):
+    """Select interactions that add independent directions beyond the null model.
 
-    The interaction columns are first residualized against the restricted
-    design (Frisch-Waugh-Lovell). The score covariance uses HC3-adjusted
-    restricted-model residuals. A scale-normalized covariance is used for
-    numerical rank detection and inversion.
+    The QR rank check is performed after residualizing every candidate
+    interaction against the restricted design. This identifies exact or
+    numerical aliases between treatment interactions and the null-model
+    regressors, including aliases that appear only in the treated subgroup.
+    """
+    projection = np.linalg.lstsq(
+        restricted_design, interaction_design, rcond=None
+    )[0]
+    residualized = interaction_design - restricted_design @ projection
+
+    _, r, pivots = qr(residualized, mode="economic", pivoting=True)
+    diagonal = np.abs(np.diag(r))
+    if diagonal.size == 0 or not np.any(diagonal > 0):
+        return np.array([], dtype=int)
+
+    tolerance = (
+        np.finfo(float).eps
+        * max(residualized.shape)
+        * float(diagonal.max())
+    )
+    rank = int(np.sum(diagonal > tolerance))
+    # Keep the chosen columns in their original order for stable reporting.
+    return np.sort(pivots[:rank]).astype(int)
+
+
+def _hc3_robust_score_test(y, restricted_design, interaction_design):
+    """HC3-robust score test for omitted, estimable interaction terms.
+
+    The interaction columns are residualized against the restricted design
+    (Frisch-Waugh-Lovell). Pivoted QR selects the independent, estimable
+    directions. The score covariance uses HC3-adjusted restricted-model
+    residuals. A scale-normalized covariance is used for rank detection and
+    inversion. A p-value is not returned if the robust score covariance is
+    rank deficient.
     """
     y = np.asarray(y, dtype=float).reshape(-1)
     restricted_design = np.asarray(restricted_design, dtype=float)
@@ -57,7 +88,6 @@ def _hc3_robust_score_test(y, restricted_design, interaction_design):
         raise ValueError("At least one interaction term is required.")
 
     n, restricted_columns = restricted_design.shape
-    n_interactions = interaction_design.shape[1]
     restricted_rank = int(np.linalg.matrix_rank(restricted_design))
     if restricted_rank != restricted_columns:
         raise ValueError(
@@ -65,26 +95,34 @@ def _hc3_robust_score_test(y, restricted_design, interaction_design):
             f"rank={restricted_rank}, columns={restricted_columns}."
         )
 
-    # Fit the null model and residualize the candidate interaction columns
-    # against it, so the score tests only their incremental contribution.
-    restricted_beta = np.linalg.lstsq(restricted_design, y, rcond=None)[0]
-    residuals = y - restricted_design @ restricted_beta
-    projection_coefficients = np.linalg.lstsq(
-        restricted_design, interaction_design, rcond=None
-    )[0]
-    residualized_interactions = (
-        interaction_design - restricted_design @ projection_coefficients
+    selected = _estimable_interaction_columns(
+        restricted_design, interaction_design
     )
-
-    interaction_rank = int(np.linalg.matrix_rank(residualized_interactions))
-    if interaction_rank != n_interactions:
+    if selected.size == 0:
         raise ValueError(
-            "The treatment-by-feature interaction design is rank deficient "
-            f"after residualizing against the null model: rank={interaction_rank}, "
-            f"terms={n_interactions}. No omnibus p-value was produced."
+            "No treatment-by-feature interaction directions are estimable "
+            "beyond the constant-effect model. No omnibus p-value was produced."
         )
 
-    # QR gives the restricted-model leverage without forming an n-by-n hat matrix.
+    selected_interactions = interaction_design[:, selected]
+    projection_coefficients = np.linalg.lstsq(
+        restricted_design, selected_interactions, rcond=None
+    )[0]
+    residualized_interactions = (
+        selected_interactions - restricted_design @ projection_coefficients
+    )
+    interaction_rank = int(np.linalg.matrix_rank(residualized_interactions))
+    if interaction_rank != selected.size:
+        raise ValueError(
+            "The selected treatment-by-feature interaction basis is still "
+            "rank deficient after residualization. No omnibus p-value was produced."
+        )
+
+    # Fit the null model and calculate HC3-adjusted score contributions.
+    restricted_beta = np.linalg.lstsq(restricted_design, y, rcond=None)[0]
+    residuals = y - restricted_design @ restricted_beta
+
+    # QR gives restricted-model leverage without forming an n-by-n hat matrix.
     q_matrix, _ = np.linalg.qr(restricted_design, mode="reduced")
     leverage = np.sum(q_matrix ** 2, axis=1)
     one_minus_leverage = 1.0 - leverage
@@ -119,10 +157,10 @@ def _hc3_robust_score_test(y, restricted_design, interaction_design):
     tolerance = max(largest_eigenvalue, 1.0) * 1e-10
     covariance_rank = int(np.sum(eigenvalues > tolerance))
 
-    if covariance_rank != n_interactions:
+    if covariance_rank != selected.size:
         raise ValueError(
             "The HC3 score covariance remains rank deficient: "
-            f"rank={covariance_rank}, interaction terms={n_interactions}. "
+            f"rank={covariance_rank}, estimable interaction terms={selected.size}. "
             "No omnibus p-value was produced."
         )
     if np.min(eigenvalues) < -tolerance:
@@ -140,6 +178,7 @@ def _hc3_robust_score_test(y, restricted_design, interaction_design):
         "p_value": p_value,
         "covariance_rank": covariance_rank,
         "interaction_design_rank": interaction_rank,
+        "selected_interaction_indices": selected,
     }
 
 
@@ -178,23 +217,31 @@ def run():
 
     # Alternative: treatment effect may vary linearly with each retained feature.
     interactions = z[:, 1:] * t[:, None]
-    full = np.column_stack([base, interactions])
+    test = _hc3_robust_score_test(y, base, interactions)
 
+    # Fit the unrestricted model only with the estimable interaction basis.
+    selected_interactions = interactions[
+        :, test["selected_interaction_indices"]
+    ]
+    full = np.column_stack([base, selected_interactions])
     base_fit = sm.OLS(y, base).fit()
     full_fit = sm.OLS(y, full).fit()
 
     if int(full_fit.model.rank) != full.shape[1]:
         raise ValueError(
-            "The unrestricted interaction design is rank deficient: "
+            "The selected unrestricted interaction design is unexpectedly "
+            "rank deficient: "
             f"rank={full_fit.model.rank}, columns={full.shape[1]}."
         )
 
-    test = _hc3_robust_score_test(y, base, interactions)
-
+    n_nominal = interactions.shape[1]
+    n_estimable = len(test["selected_interaction_indices"])
     result = pd.DataFrame([{
         "contrast": "Mens E-Mail vs No Email",
         "n": len(y),
-        "n_interaction_terms": interactions.shape[1],
+        "n_interaction_terms": n_nominal,
+        "n_estimable_interaction_terms": n_estimable,
+        "n_aliased_interaction_terms": n_nominal - n_estimable,
         "interaction_design_rank": test["interaction_design_rank"],
         "robust_covariance_rank": test["covariance_rank"],
         "constant_effect_r2": float(base_fit.rsquared),
