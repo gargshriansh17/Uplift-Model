@@ -1,10 +1,11 @@
-"""Global test for treatment-effect heterogeneity in the Hillstrom experiment.
+"""Global treatment-effect heterogeneity test for the two-arm Hillstrom experiment.
 
-For each email arm versus No Email, compare a constant-effect linear probability
-model with a model containing treatment-by-feature interactions. HC3 robust
-covariance and a joint Wald F-test are used. A rank-revealing QR step removes
-redundant one-hot columns before inference. This is an exploratory global test,
-not proof of individual-level CATE accuracy.
+The two-arm development data contains Men's Email (1) and No Email (0).
+Compare a constant-effect linear probability model with a model containing
+treatment-by-feature interactions. HC3-robust covariance and a joint Wald test
+are used. Rank diagnostics are saved because a singular robust covariance must
+not be mistaken for a full-rank omnibus test. This is exploratory, not proof of
+individual-level CATE accuracy.
 """
 import numpy as np
 import pandas as pd
@@ -47,38 +48,57 @@ def run():
     z = _independent_columns(transformed[:, variable])
     z = sm.add_constant(z, has_constant="add")
 
-    rows = []
-    for arm in (1, 2):
-        mask = np.isin(t, [0, arm])
-        y_arm = y[mask]
-        t_arm = (t[mask] == arm).astype(float)
-        x_arm = z[mask]
-        base = np.column_stack([x_arm, t_arm])
-        interactions = x_arm[:, 1:] * t_arm[:, None]
-        full = np.column_stack([base, interactions])
-        base_fit = sm.OLS(y_arm, base).fit(cov_type="HC3")
-        full_fit = sm.OLS(y_arm, full).fit(cov_type="HC3")
-        interaction_idx = np.arange(base.shape[1], full.shape[1])
-        restriction = np.zeros((len(interaction_idx), full.shape[1]))
-        restriction[np.arange(len(interaction_idx)), interaction_idx] = 1.0
-        test = full_fit.wald_test(restriction, use_f=True, scalar=True)
-        rows.append({
-            "contrast": f"arm_{arm}_vs_control",
-            "n": int(mask.sum()),
-            "n_interactions": len(interaction_idx),
-            "constant_effect_r2": float(base_fit.rsquared),
-            "heterogeneous_effect_r2": float(full_fit.rsquared),
-            "robust_wald_statistic": float(np.asarray(test.statistic).squeeze()),
-            "degrees_freedom_num": int(test.df_num),
-            "degrees_freedom_denom": int(test.df_denom),
-            "p_value": float(test.pvalue),
-            "alpha": 0.05,
-            "reject_constant_effect": bool(test.pvalue < 0.05),
-        })
+    treatment_values = set(np.unique(t))
+    if treatment_values != {0, 1}:
+        raise ValueError(
+            f"Expected treatment values 0/1 for the two-arm experiment; found {sorted(treatment_values)}."
+        )
+
+    # This input is the existing two-arm experiment (Men's Email vs No Email).
+    # Women's Email belongs to the separate three-arm pipeline and must not be
+    # tested using these files.
+    y_arm = y
+    t_arm = t.astype(float)
+    x_arm = z
+    base = np.column_stack([x_arm, t_arm])
+    interactions = x_arm[:, 1:] * t_arm[:, None]
+    full = np.column_stack([base, interactions])
+
+    base_fit = sm.OLS(y_arm, base).fit(cov_type="HC3")
+    full_fit = sm.OLS(y_arm, full).fit(cov_type="HC3")
+    interaction_idx = np.arange(base.shape[1], full.shape[1])
+    restriction = np.zeros((len(interaction_idx), full.shape[1]))
+    restriction[np.arange(len(interaction_idx)), interaction_idx] = 1.0
+
+    constrained_covariance = (
+        restriction @ np.asarray(full_fit.cov_params()) @ restriction.T
+    )
+    covariance_rank = int(np.linalg.matrix_rank(constrained_covariance))
+    test = full_fit.wald_test(restriction, use_f=True, scalar=True)
+
+    result = pd.DataFrame([{
+        "contrast": "Mens E-Mail vs No Email",
+        "n": len(y_arm),
+        "n_interaction_terms": len(interaction_idx),
+        "robust_covariance_rank": covariance_rank,
+        "constant_effect_r2": float(base_fit.rsquared),
+        "heterogeneous_effect_r2": float(full_fit.rsquared),
+        "robust_wald_statistic": float(np.asarray(test.statistic).squeeze()),
+        "degrees_freedom_num": int(test.df_num),
+        "degrees_freedom_denom": int(test.df_denom),
+        "p_value": float(test.pvalue),
+        "alpha": 0.05,
+        "reject_constant_effect": bool(test.pvalue < 0.05),
+    }])
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    result = pd.DataFrame(rows)
     result.to_csv(OUTPUT, index=False)
     print(result.to_string(index=False))
+    if covariance_rank < len(interaction_idx):
+        print(
+            "WARNING: The HC3 covariance for the interaction block is rank "
+            f"{covariance_rank}, below {len(interaction_idx)} interaction terms. "
+            "Interpret the reported effective Wald degrees of freedom cautiously."
+        )
     return result
 
 
