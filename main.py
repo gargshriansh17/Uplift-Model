@@ -16,6 +16,7 @@ import sys
 
 STAGES = {
     # --- data ---
+    "fetch-data": "src.dataset",
     "eda": "src.eda",
     "data": "src.data_preprocessing",
     # --- two-arm models (Men's Email vs No Email) ---
@@ -27,12 +28,17 @@ STAGES = {
     "compare": "src.model_comparison",
     "bootstrap": "src.bootstrap_evaluation",
     "repeated-oof": "src.repeated_oof_evaluation",
+    "x-learner-validation": "src.x_learner_validation",
+    "nested-cv": "src.nested_cv",
+    "multiple-comparison": "src.multiple_comparison",
+    "heterogeneity": "src.heterogeneity_test",
     # --- three-arm extension ---
     "three-arm-data": "src.prepare_three_arm_data",
     "three-arm-t-learner": "src.models.three_arm_t_learner",
     "three-arm-lightgbm": "src.models.three_arm_lightgbm_t_learner",
     "three-arm-policy": "src.models.three_arm_policy_evaluation",
     "three-arm-ranking": "src.models.three_arm_uplift_ranking",
+    "three-arm-final-test": "src.three_arm_final_test",
     # --- final, one-time test evaluation ---
     "final-test": "src.final_test_evaluation",
 }
@@ -40,8 +46,9 @@ STAGES = {
 # Everything needed to reproduce the model selection, in order.
 # final-test is intentionally NOT included: it should be run once, last.
 ALL_STAGES = [
-    "eda", "data", "baseline", "t-learner", "s-learner", "lightgbm",
-    "compare", "bootstrap", "repeated-oof",
+    "fetch-data", "eda", "data", "baseline", "t-learner", "s-learner", "lightgbm",
+    "compare", "bootstrap", "repeated-oof", "x-learner-validation",
+    "nested-cv", "multiple-comparison", "heterogeneity",
 ]
 
 

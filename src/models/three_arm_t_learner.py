@@ -214,7 +214,7 @@ def run_three_arm_t_learner():
 
     preprocessor=build_preprocessor()
     X_train_processed=preprocessor.fit_transform(X_train)
-    X_val_processed=preprocessor.fit_transform(X_val)
+    X_val_processed=preprocessor.transform(X_val)
 
     print("\nFEATURE TRANSFORMATION")
     print("Training shape:", X_train_processed.shape)

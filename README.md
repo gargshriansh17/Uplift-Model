@@ -1,154 +1,307 @@
 # Uplift Modelling on the Hillstrom Email Campaign
 
-Which customers should receive a marketing email? This project builds and evaluates uplift models that estimate the *incremental* effect of an email on purchase conversion, rather than just who is likely to buy.
+This project studies **uplift modelling**: estimating which customers are more likely to convert *because they received a campaign*, rather than simply predicting which customers are likely to purchase.
 
-> **Headline result: no reliable targeting uplift was found.**
-> The email campaign itself clearly works, but none of the models tested can be shown to rank customers better than random. Every validation Qini coefficient is negative, and no final-test Qini interval excludes zero. A LightGBM T-Learner was carried forward as the "least bad" candidate, not as a proven winner. This is a negative result, reported as such.
+It uses the randomized Hillstrom email-marketing experiment and compares customer-level uplift rankings with simple campaign-wide policies. The results are intentionally reported with their limitations: the campaigns have measurable aggregate conversion differences, but the experiments here do **not** establish a reliable personalized targeting strategy.
 
-**Dataset:** the Hillstrom MineThatData E-Mail Analytics and Data Mining Challenge (K. Hillstrom, 2008): 64,000 customers who last purchased within twelve months, randomly assigned to a Men's Email, a Women's Email or No Email. Conversion is a purchase on the site in the following two weeks. The dataset is **not included in this repo**; see [Getting the data](#getting-the-data).
+---
 
-## Key findings
+## Project at a glance
 
-- **The campaign works.** Conversion is 1.25% (Men's Email), 0.88% (Women's Email) and 0.57% (No Email).
-- **No reliable targeting uplift found.** Conversions are very sparse (about 0.5-1.3%), so individual-level uplift is hard to rank. Qini coefficients on validation were negative for every model evaluated, and all pairwise bootstrap intervals include zero.
-- **LightGBM T-Learner was carried forward as the "least bad" model.** It had the best validation Qini/AUUC and the best mean Qini across 5 repeated out-of-fold runs. This is a consistency-based choice, not evidence that it enables useful targeting.
-- **The simple baseline does as well.** On the final test split, the Logistic T-Learner has similar or higher point estimates than LightGBM when targeting the top 10-30% of customers, and probability metrics are essentially identical (see below). The extra complexity of LightGBM is not justified by these results.
-- **A fixed "Always Men's Email" policy is a strong benchmark.** In the three-arm policy evaluation the model-based policies did not significantly beat it.
+- **Dataset:** 64,000 customers from the Hillstrom MineThatData email experiment.
+- **Treatments:** No Email, Men's Email and Women's Email.
+- **Primary two-arm comparison:** Men's Email versus No Email.
+- **Two-arm models:** Logistic T-Learner, S-Learner, X-Learner and LightGBM T-Learner.
+- **Three-arm evaluation:** Logistic and LightGBM T-Learners across all three campaign arms.
+- **Evaluation:** Qini/AUUC, uplift at top-k, probability metrics, nested cross-validation, corrected pairwise comparisons, IPW and doubly robust policy value.
+- **Reproducible data access:** scikit-uplift's fetch_hillstrom.
+- **Tests:** GitHub Actions workflow running pytest on Python 3.11.
 
-### Model selection (Men's Email vs No Email)
+## Dataset and campaign overview
 
-| Model              | Validation Qini       | Repeated OOF Qini (mean of 5) |
-| ------------------ | --------------------- | ----------------------------- |
-| LightGBM T-Learner | -0.037                | +0.016                        |
-| X-Learner          | not run on validation | -0.014                        |
-| Logistic T-Learner | -0.066                | -0.025                        |
-| S-Learner          | -0.083                | -0.038                        |
+The Hillstrom dataset contains 64,000 customers randomly assigned to one of three campaign groups. The conversion outcome records whether a customer made a purchase during the follow-up period.
 
-The X-Learner was evaluated only in the repeated out-of-fold study (mean Qini -0.014: below LightGBM, above the Logistic T-Learner and S-Learner). It was not run on the validation split, so it is not directly comparable to the validation column.
+| Campaign | Customers | Conversions | Conversion rate |
+|---|---:|---:|---:|
+| Men's Email | 21,307 | 267 | 1.253% |
+| Women's Email | 21,387 | 189 | 0.884% |
+| No Email | 21,306 | 122 | 0.573% |
+| **Total** | **64,000** | **578** | **0.903%** |
 
-### Three-arm policy value (validation split, doubly-robust estimate)
+The aggregate conversion rates show that the email groups converted more often than the no-email group in this experiment. That aggregate difference does not, by itself, show which individual customers benefit from an email or whether an uplift model can identify them reliably.
 
-| Policy                     | Estimated conversion rate (95% CI) |
-| -------------------------- | ---------------------------------- |
-| Always No Email            | 0.59% (0.37 - 0.83)                |
-| Always Women's Email       | 0.89% (0.61 - 1.17)                |
-| Always Men's Email         | 1.24% (0.92 - 1.56)                |
-| Logistic Regression policy | 1.18% (0.87 - 1.51)                |
-| LightGBM policy            | 1.07% (0.78 - 1.38)                |
+### Campaign conversion visual
 
-## Final test result
+![Hillstrom conversion rate by campaign](reports/figures/conversion_by_campaign.png)
 
-The test split is scored once, by `python main.py final-test`. The model is the LightGBM T-Learner, using the hyper-parameters chosen on validation and refit on train + validation, with the Logistic T-Learner as baseline. Results are written to `reports/final_test/`.
+*Project-generated EDA figure: observed conversion rate by randomized campaign group.*
 
-Test split: 8,523 customers, observed average effect 0.70 pp. Brackets show 95% stratified bootstrap intervals (2,000 replications).
+## Methodology
 
-| Metric                | LightGBM T-Learner     | Logistic T-Learner (baseline) |
-| --------------------- | ---------------------- | ----------------------------- |
-| Qini coefficient      | 0.026 (-0.104, 0.160)  | 0.013 (-0.118, 0.146)         |
-| AUUC (random = 0.352) | 0.378 (0.147, 0.614)   | 0.365 (0.139, 0.599)          |
-| Uplift@10%            | 1.40 pp (0.04, 2.90)   | 1.47 pp (0.10, 3.02)          |
-| Uplift@20%            | 0.82 pp (-0.12, 1.78)  | 1.44 pp (0.32, 2.54)          |
-| Uplift@30%            | 0.76 pp (0.05, 1.53)   | 1.33 pp (0.56, 2.20)          |
+### 1. Two-arm development experiment
 
-Probability metrics on the test split (per arm) are nearly identical:
+The main model-comparison workflow focuses on:
 
-| Model              | Treatment log loss | Control log loss | Treatment Brier | Control Brier |
-| ------------------ | ------------------ | ---------------- | --------------- | ------------- |
-| LightGBM T-Learner | 0.0668             | 0.0343           | 0.01248         | 0.00560       |
-| Logistic T-Learner | 0.0666             | 0.0344           | 0.01248         | 0.00560       |
+- Control: No Email (treatment = 0)
+- Treatment: Men's Email (treatment = 1)
 
-How to read this:
+This produces 42,613 customers. The existing split is:
 
-- **No evidence of beating random targeting.** Neither model's Qini interval excludes zero at this sample size. The random-targeting AUUC (0.352) lies inside both AUUC intervals.
-- **The baseline matches or beats the "final" model on point estimates.** The Logistic T-Learner's Uplift@K is similar at 10% and higher at 20% and 30%, but the intervals overlap, so none of these differences is established by this table alone. LightGBM was pre-selected before the test split was scored, and that choice was not changed afterwards.
-- **No "better" claim between models is made.** The intervals above are each model's own bootstrap and say nothing about the *difference* between models. The paired comparison is described next.
+| Split | Customers |
+|---|---:|
+| Training | 25,567 |
+| Validation | 8,523 |
+| Held-out test | 8,523 |
+| **Total** | **42,613** |
 
-### Paired comparison
+The feature set contains customer recency and purchase-history variables, prior men's/women's purchasing indicators, new-customer status, history segment, ZIP-code group and channel.
 
-`src/paired_bootstrap.py` resamples the same test rows for both models in every replication and reports the distribution of the difference (LightGBM minus Logistic) for Qini, AUUC and Uplift@10/20/30%:
+Preprocessing uses numerical imputation/scaling and categorical imputation/one-hot encoding. The fitted preprocessing steps are learned on training data and then applied to validation/test data.
 
-```
-python -m src.paired_bootstrap     # after python main.py final-test
-```
+### 2. Uplift models
 
-Output: `reports/final_test/paired_bootstrap_summary.csv`. Until this has been run and its results added here, no statement about one model being better than the other should be read into this README.
+The two-arm comparison includes four learners:
 
-## Method
+| Model | Approach |
+|---|---|
+| Logistic T-Learner | Separate treatment and control outcome models |
+| S-Learner | One outcome model with treatment as an input |
+| X-Learner | Two-stage effect imputation and effect modelling |
+| LightGBM T-Learner | Separate LightGBM outcome models for treatment and control |
 
-1. **Data and EDA** - quality checks, treatment/control balance, campaign summaries (`src/eda.py`, `src/data_preprocessing.py`). The two-arm data is split 60/20/20 into train (25,567), validation (8,523) and test (8,523).
-2. **Models** - Logistic T-Learner, S-Learner, LightGBM T-Learner (tuned with 5-fold CV on log loss, separately for the treatment and control arm), and an X-Learner in the repeated out-of-fold study.
-3. **Evaluation** - Qini curve and coefficient, AUUC, Uplift@K, probability metrics (log loss, Brier), tie-aware ranking for LightGBM, 2,000-replication stratified bootstrap, and 5 repeated out-of-fold runs.
-4. **Feature experiments** - baseline, log-history, interactions and no-history-segment variants compared by CV log loss.
-5. **Three-arm extension** - pairwise Qini curves per contrast and policy value with IPW and doubly-robust estimators.
-6. **Final test evaluation** - one-time scoring of the held-out test split. The model was fixed before this step, and the script checks that no test rows appear in the train or validation data.
+The X-Learner has a dedicated train-fit / validation-evaluate stage. Its validation predictions are generated without fitting the model on validation outcomes.
 
-## Project structure
+### 3. Evaluation
 
-```
-src/
-  config.py, data_preprocessing.py, feature_engineering.py, eda.py
-  evaluation.py, model_comparison.py, bootstrap_evaluation.py
-  repeated_oof_evaluation.py, final_test_evaluation.py, paired_bootstrap.py
-  models/   t_learner, s_learner, lightgbm_t_learner, three_arm_*
-tests/      unit tests for the metrics and split safety
-reports/    metrics, curves and figures
-artifacts/  trained models (not committed)
-data/       raw and processed data (not committed)
-main.py     pipeline runner
-```
+The project uses complementary metrics because no single metric fully describes an uplift model:
 
-## Getting the data
+- **Qini coefficient / Qini AUC:** assesses whether ranking customers by predicted uplift improves cumulative incremental gain over random targeting.
+- **AUUC / uplift AUC:** summarizes the area under the cumulative uplift/gain curve, using the metric definition reported by the relevant evaluation script.
+- **Uplift@10%, @20%, @30%:** evaluates estimated incremental conversion in the highest-ranked customer groups.
+- **Log loss and Brier score:** assess the outcome-probability models in the treatment and control arms.
+- **IPW and doubly robust (DR) policy value:** estimate conversion value under specified campaign-allocation policies.
 
-The raw CSV is not committed. Download it from the [original challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html) and save it as `data/raw/hillstrom.csv`:
+Bootstrap intervals describe sampling uncertainty conditional on the fitted models; they do not include the full uncertainty from refitting the models.
 
-```
-mkdir -p data/raw
-curl -L -o data/raw/hillstrom.csv \
-  "http://www.minethatdata.com/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv"
-```
+---
 
-If the direct link is unavailable, use the challenge page above.
+## Results
 
-## How to run
+### X-Learner validation
 
-Requires Python 3.11 or later.
+The dedicated X-Learner validation run completed on the two-arm validation split.
 
-```
-pip install -r requirements.txt
-python main.py --list               # show stages
-python main.py all                  # reproduce model selection
-python main.py final-test           # run ONCE, last
-python -m src.paired_bootstrap      # paired LightGBM vs Logistic comparison (needs final-test outputs)
-python -m pytest tests              # run unit tests
-```
+| Metric | Validation result |
+|---|---:|
+| scikit-uplift Qini AUC | -0.104303 |
+| scikit-uplift uplift AUC | -0.003961 |
 
-All random seeds are fixed (`RANDOM_STATE = 42` in `src/config.py`).
+These negative ranking metrics do not support a claim that the X-Learner produced useful positive uplift ranking on this validation split.
 
-### Hyper-parameters
+### Five-fold nested cross-validation
 
-**LightGBM T-Learner.** Fixed for all runs: `objective="binary"`, `min_child_samples=50`, `reg_lambda=5.0`, `random_state=42`. The remaining parameters were chosen per arm by 5-fold CV on log loss over the grid `n_estimators` in {50, 100}, `learning_rate` in {0.03, 0.05}, `num_leaves` in {3, 7}, `max_depth` in {2, 3}, and are re-used for the final train + validation refit.
+Five outer folds were run, with hyperparameter selection confined to each outer training fold. The four two-arm learners were evaluated on the corresponding held-out outer fold.
 
-| Arm       | `n_estimators` | `learning_rate` | `num_leaves` | `max_depth` | Best CV log loss |
-| --------- | -------------- | --------------- | ------------ | ----------- | ---------------- |
-| Treatment | 50             | 0.03            | 7            | 3           | 0.0670           |
-| Control   | 50             | 0.05            | 3            | 2           | 0.0345           |
+| Model | Mean Qini AUC | Standard deviation |
+|---|---:|---:|
+| X-Learner | -0.01879 | 0.06016 |
+| S-Learner | -0.05226 | 0.05177 |
+| LightGBM T-Learner | -0.05948 | 0.08881 |
+| Logistic T-Learner | -0.06165 | 0.06979 |
 
-For the control arm, `max_depth` 2 and 3 tie at `num_leaves=3` (they are equivalent), and the first grid entry is kept. Many grid points are within one CV standard deviation of the best, so these settings are not sharply preferred.
+The X-Learner had the least-negative mean Qini AUC in this run. **All four model means were negative**, and the fold-to-fold variability was substantial. These averages are not sufficient to declare a reliable winning model.
 
-**Logistic T-Learner.** `LogisticRegression(solver="lbfgs", class_weight=None, max_iter=2000)` with `C=0.01` for the treatment arm and `C=0.1` for the control arm.
+### Multiple-comparison correction
 
-## Limitations
+The six pairwise model comparisons used the corrected resampled t-test and Holm adjustment.
 
-- **Sparse conversions.** Conversion rates are around 1%, so every uplift estimate is noisy and the results are exploratory.
-- **Interval coverage.** Bootstrap intervals are conditional on the trained models and exclude refit uncertainty, so they understate the total uncertainty.
-- **Model comparison.** The per-model intervals do not test differences between models. Use the paired bootstrap above, and do not read any LightGBM-vs-Logistic difference as significant without it.
-- **Coarse LightGBM ranking.** 90% of LightGBM validation scores fall in tied groups.
-- **Scope of the final test.** The final test covers Men's Email vs No Email only; the three-arm results are validation-split estimates.
-- **No cost modelling.** Spend, email cost and profit are not modelled. A positive Qini does not by itself prove a campaign is profitable.
+- All six Holm-adjusted p-values were 1.0.
+- None of the pairwise comparisons was significant at the 0.05 level.
+- There is no statistically supported winner among the four two-arm models from this nested-CV comparison.
 
-## Planned work
+There were only five outer folds, so the pairwise test has limited degrees of freedom and should be interpreted cautiously.
 
-- Report the results of the paired bootstrap in this README once run.
-- Refit-based (full pipeline) bootstrap intervals that include training uncertainty.
-- Run the X-Learner on the validation split so it is comparable with the other models.
-- Extend the held-out evaluation to the Women's Email arm and add cost/spend modelling.
+### Existing two-arm held-out test
+
+The existing two-arm held-out test contains 8,523 customers. The selected LightGBM T-Learner and the Logistic T-Learner baseline were scored on the same test customers. The reported 95% intervals use 2,000 stratified bootstrap replications.
+
+| Metric | LightGBM T-Learner | Logistic T-Learner |
+|---|---:|---:|
+| Qini coefficient | 0.0263 | 0.0127 |
+| Qini 95% CI | [-0.1041, 0.1597] | [-0.1179, 0.1459] |
+| AUUC | 0.3782 | 0.3646 |
+| AUUC 95% CI | [0.1471, 0.6144] | [0.1394, 0.5985] |
+| Uplift@10% | 1.40 pp | 1.47 pp |
+| Uplift@20% | 0.82 pp | 1.44 pp |
+| Uplift@30% | 0.76 pp | 1.33 pp |
+
+The random-targeting AUUC reference for this test split was 0.3519. Both Qini confidence intervals include zero, and the random AUUC reference lies within both AUUC confidence intervals. The point estimates therefore do not establish reliable ranking lift over random targeting or a statistically established advantage for LightGBM over Logistic Regression.
+
+![Two-arm held-out test Qini curves](reports/figures/qini_final_test.png)
+
+*Project-generated two-arm held-out test Qini visualisation.*
+
+### Three-arm held-out test
+
+The three-arm final-test evaluation refits the Logistic and validation-selected LightGBM arm models on train plus validation, then scores the reserved three-arm test split once.
+
+The held-out test contains 12,801 customers:
+
+| Campaign | Customers | Conversions |
+|---|---:|---:|
+| No Email | 4,261 | 24 |
+| Men's Email | 4,262 | 54 |
+| Women's Email | 4,278 | 38 |
+| **Total** | **12,801** | **116** |
+
+#### Pairwise uplift-ranking metrics
+
+| Model | Contrast | Qini AUC | Uplift AUC |
+|---|---|---:|---:|
+| Logistic T-Learner | Men's Email vs No Email | 0.01660 | 0.00067 |
+| LightGBM T-Learner | Men's Email vs No Email | 0.02758 | 0.00098 |
+| Logistic T-Learner | Women's Email vs No Email | 0.08258 | 0.00244 |
+| LightGBM T-Learner | Women's Email vs No Email | 0.08812 | 0.00255 |
+
+LightGBM had the higher point estimate for both pairwise ranking metrics in these comparisons. These point estimates alone do not establish statistical superiority or prove that a learned allocation policy improves conversion value.
+
+The following Qini figures are from the **three-arm validation-split ranking evaluation**, not the held-out final test:
+
+| Men's Email vs No Email | Women's Email vs No Email |
+|---|---|
+| ![Three-arm validation Qini curve for Men's Email versus No Email](reports/three_arm/figures/qini_mens_vs_no_email.png) | ![Three-arm validation Qini curve for Women's Email versus No Email](reports/three_arm/figures/qini_womens_vs_no_email.png) |
+
+#### Three-arm policy value
+
+The final-test policy bootstrap used 2,000 customer-level replications, stratified by randomized treatment arm. The table below reports the doubly robust (DR) estimates and each policy's individual 95% bootstrap interval.
+
+| Policy | Logistic DR value (95% CI) | LightGBM DR value (95% CI) |
+|---|---:|---:|
+| Always No Email | 0.566% (0.356–0.781%) | 0.566% (0.353–0.799%) |
+| Always Men's Email | **1.266% (0.941–1.600%)** | **1.267% (0.942–1.628%)** |
+| Always Women's Email | 0.891% (0.629–1.196%) | 0.886% (0.606–1.171%) |
+| Learned argmax policy | 1.132% (0.832–1.451%) | 1.210% (0.898–1.548%) |
+
+Always Men's Email had the highest DR point estimate for both models. The learned LightGBM policy was close, but its point estimate was lower. The supplied intervals are individual policy intervals, not a paired confidence interval for the difference between two policies; they should not be used as a formal significance test of that difference.
+
+### Overall interpretation
+
+The evidence supports three restrained conclusions:
+
+1. The campaign groups had different aggregate conversion rates in this randomized dataset.
+2. The two-arm uplift-ranking results are weak: nested-CV mean Qini AUCs were negative, and no pairwise model comparison survived Holm correction.
+3. In the three-arm held-out policy evaluation, Always Men's Email had the largest estimated DR conversion value. The learned policies did not demonstrate a higher value than this simple fixed policy.
+
+The results are useful as a reproducible negative/limited finding: **predicting individual treatment effects is harder than predicting conversion, and this project did not establish a dependable personalized targeting advantage.**
+
+---
+
+## Reproducible data access
+
+The raw dataset is not committed to the repository. The project uses **scikit-uplift** to fetch and cache the public Hillstrom data:
+
+~~~powershell
+python -m pip install -r requirements.txt
+python -m src.dataset
+~~~
+
+The loader calls:
+
+~~~python
+sklift.datasets.fetch_hillstrom(target_col="all")
+~~~
+
+It caches the upstream source under **data/raw/scikit_uplift/**, validates the expected feature and target columns, and writes the normalized dataset to **data/raw/hillstrom.csv**.
+
+The original dataset is described on the [MineThatData challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html).
+
+## Running the project
+
+Use Python 3.11 or later.
+
+### Prepare data
+
+~~~powershell
+python -m pip install -r requirements.txt
+python -m src.dataset
+python -m src.data_preprocessing
+~~~
+
+### Run the requested two-arm evaluation stages
+
+~~~powershell
+python -m src.x_learner_validation
+python -m src.nested_cv
+python -m src.multiple_comparison
+~~~
+
+Run multiple-comparison correction after nested CV has generated the outer-fold metrics.
+
+### Run the three-arm final evaluation
+
+The three-arm training stages must be completed before the final test script. The held-out three-arm test should be scored once; do not use those results to tune models.
+
+~~~powershell
+python main.py three-arm-data three-arm-t-learner three-arm-lightgbm
+python -m src.three_arm_final_test
+~~~
+
+The three-arm final-test outputs are written under **reports/three_arm/final_test/**.
+
+### Run tests
+
+~~~powershell
+python -m pytest -q
+~~~
+
+The GitHub Actions workflow installs **requirements.txt** and runs **python -m pytest -q** on Python 3.11. The latest verified workflow run for the methodology-upgrade branch completed with **14 tests passed**. CI runs the unit/synthetic tests; it does not download the Hillstrom data or execute the full model-training workflow.
+
+## Repository structure
+
+~~~text
+.
+├── .github/workflows/tests.yml
+├── data/
+│   ├── raw/                 # downloaded dataset/cache (not committed)
+│   └── processed/           # generated train/validation/test splits
+├── reports/
+│   ├── figures/             # EDA and two-arm evaluation figures
+│   ├── final_test/          # existing two-arm held-out reports
+│   ├── model_comparison/    # two-arm comparison reports
+│   └── three_arm/           # three-arm validation reports and figures
+├── src/
+│   ├── dataset.py
+│   ├── data_preprocessing.py
+│   ├── x_learner_validation.py
+│   ├── nested_cv.py
+│   ├── multiple_comparison.py
+│   ├── three_arm_final_test.py
+│   └── models/
+├── tests/
+├── main.py
+└── requirements.txt
+~~~
+
+## Scope and limitations
+
+- **No verified CATE heterogeneity conclusion is reported.** The exploratory **src/heterogeneity_test.py** run did not complete successfully on the local Hillstrom development data because of design-matrix rank issues. It is not presented as a completed result, and no heterogeneity p-value or conclusion is claimed here.
+- **Sparse outcomes:** conversion rates are below 1.3% in each campaign group, which makes individual-level uplift estimates noisy.
+- **Model uncertainty:** the reported bootstrap intervals are conditional on fitted models and do not include full model-refitting uncertainty.
+- **Policy comparisons:** separate confidence intervals for individual policies are not a substitute for a paired interval or test of their difference.
+- **No economic objective:** campaign cost, revenue impact and profit are not modelled. Conversion value is not the same as profit.
+- **Test-set discipline:** held-out test outputs are reported for evaluation, not for further parameter tuning or model selection.
+
+## Main implementation files
+
+| File | Purpose |
+|---|---|
+| **src/dataset.py** | Reproducible Hillstrom download and local cache |
+| **src/x_learner_validation.py** | Dedicated X-Learner train/validation evaluation |
+| **src/nested_cv.py** | Five-fold outer CV with inner tuning |
+| **src/multiple_comparison.py** | Corrected resampled comparisons and Holm adjustment |
+| **src/three_arm_final_test.py** | One-time three-arm held-out evaluation and policy bootstrap |
+| **.github/workflows/tests.yml** | Automated pytest workflow |
+
+---
+
+**Project takeaway:** the work implements a reproducible uplift-modelling workflow and evaluates it with validation, nested CV, multiplicity correction and a three-arm held-out policy analysis. The most defensible finding is not that one model wins, but that the available evidence does not establish reliable personalized targeting uplift over simple campaign policies.
