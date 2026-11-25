@@ -2,13 +2,14 @@
 
 For each email arm versus No Email, compare a constant-effect linear probability
 model with a model containing treatment-by-feature interactions. HC3 robust
-covariance and a joint Wald F-test are used. This is a global exploratory test,
+covariance and a joint Wald F-test are used. A rank-revealing QR step removes
+redundant one-hot columns before inference. This is an exploratory global test,
 not proof of individual-level CATE accuracy.
 """
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import chi2
+from scipy.linalg import qr
 
 from src.config import PROCESSED_DATA_DIR, REPORTS_DIR, TARGET_COL
 from src.data_preprocessing import FEATURE_COLUMNS, build_preprocessor
@@ -16,6 +17,18 @@ from src.data_preprocessing import FEATURE_COLUMNS, build_preprocessor
 INPUTS = [PROCESSED_DATA_DIR / name for name in
           ("train_data.csv", "validation_data.csv")]
 OUTPUT = REPORTS_DIR / "heterogeneity" / "global_interaction_tests.csv"
+
+
+def _independent_columns(matrix):
+    """Return a full-column-rank basis using pivoted QR."""
+    _, r, pivots = qr(matrix, mode="economic", pivoting=True)
+    diagonal = np.abs(np.diag(r))
+    if diagonal.size == 0:
+        raise ValueError("No usable covariates for heterogeneity test.")
+    tolerance = np.finfo(float).eps * max(matrix.shape) * diagonal.max()
+    rank = int(np.sum(diagonal > tolerance))
+    selected = np.sort(pivots[:rank])
+    return matrix[:, selected]
 
 
 def run():
@@ -26,19 +39,25 @@ def run():
     X = df[FEATURE_COLUMNS].copy()
     y = df[TARGET_COL].astype(float).to_numpy()
     t = df["treatment"].astype(int).to_numpy()
-    z = build_preprocessor().fit_transform(X)
-    z = z.toarray() if hasattr(z, "toarray") else np.asarray(z)
+    transformed = build_preprocessor().fit_transform(X)
+    transformed = transformed.toarray() if hasattr(transformed, "toarray") else np.asarray(transformed)
+    # Drop constant transformed columns, then remove exact linear dependencies
+    # (notably full one-hot blocks) before forming treatment interactions.
+    variable = np.std(transformed, axis=0) > 1e-12
+    z = _independent_columns(transformed[:, variable])
     z = sm.add_constant(z, has_constant="add")
 
     rows = []
     for arm in (1, 2):
         mask = np.isin(t, [0, arm])
-        y_arm, t_arm, x_arm = y[mask], (t[mask] == arm).astype(float), z[mask]
+        y_arm = y[mask]
+        t_arm = (t[mask] == arm).astype(float)
+        x_arm = z[mask]
         base = np.column_stack([x_arm, t_arm])
-        full = np.column_stack([x_arm, t_arm, x_arm[:, 1:] * t_arm[:, None]])
+        interactions = x_arm[:, 1:] * t_arm[:, None]
+        full = np.column_stack([base, interactions])
         base_fit = sm.OLS(y_arm, base).fit(cov_type="HC3")
         full_fit = sm.OLS(y_arm, full).fit(cov_type="HC3")
-        # Joint robust Wald test: every treatment-feature interaction = 0.
         interaction_idx = np.arange(base.shape[1], full.shape[1])
         restriction = np.zeros((len(interaction_idx), full.shape[1]))
         restriction[np.arange(len(interaction_idx)), interaction_idx] = 1.0
