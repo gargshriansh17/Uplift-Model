@@ -29,10 +29,9 @@ def run():
     z = build_preprocessor().fit_transform(X)
     z = z.toarray() if hasattr(z, "toarray") else np.asarray(z)
     z = sm.add_constant(z, has_constant="add")
-    names = ["const"] + list(build_preprocessor().fit(X).get_feature_names_out())
 
     rows = []
-    for arm in (1,):
+    for arm in (1, 2):
         mask = np.isin(t, [0, arm])
         y_arm, t_arm, x_arm = y[mask], (t[mask] == arm).astype(float), z[mask]
         base = np.column_stack([x_arm, t_arm])
