@@ -27,3 +27,47 @@ def test_corrected_resampled_test_returns_valid_two_sided_p_value():
     assert np.isfinite(statistic)
     assert 0.0 <= p_value <= 1.0
     assert standard_error > 0
+
+
+def test_hc3_robust_score_test_returns_full_rank_omnibus_result():
+    from src.heterogeneity_test import _hc3_robust_score_test
+
+    rng = np.random.default_rng(42)
+    n = 3000
+    treatment = rng.binomial(1, 0.5, size=n)
+    features = rng.normal(size=(n, 3))
+    restricted = np.column_stack([np.ones(n), features, treatment])
+    interactions = features * treatment[:, None]
+
+    probabilities = 1.0 / (
+        1.0 + np.exp(-(-3.2 + 0.25 * features[:, 0] + 0.35 * treatment))
+    )
+    outcome = rng.binomial(1, probabilities)
+
+    result = _hc3_robust_score_test(outcome, restricted, interactions)
+
+    assert result["interaction_design_rank"] == 3
+    assert result["covariance_rank"] == 3
+    assert result["degrees_freedom"] == 3
+    assert np.isfinite(result["statistic"])
+    assert 0.0 <= result["p_value"] <= 1.0
+
+
+def test_hc3_robust_score_test_rejects_duplicate_interaction_columns():
+    import pytest
+    from src.heterogeneity_test import _hc3_robust_score_test
+
+    rng = np.random.default_rng(7)
+    n = 500
+    treatment = rng.binomial(1, 0.5, size=n)
+    feature = rng.normal(size=n)
+    restricted = np.column_stack([np.ones(n), feature, treatment])
+    interaction = feature * treatment
+    duplicated_interactions = np.column_stack([interaction, interaction])
+
+    with pytest.raises(ValueError, match="interaction design is rank deficient"):
+        _hc3_robust_score_test(
+            rng.binomial(1, 0.3, size=n),
+            restricted,
+            duplicated_interactions,
+        )
