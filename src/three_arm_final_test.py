@@ -210,8 +210,13 @@ def run():
         for policy_name, actions in policy_actions[model_name].items():
             contributions[policy_name] = _policy_contributions(t, y, mu, actions)
         boot = {name: {"IPW": [], "DR": []} for name in names}
+        arm_positions = {arm: np.flatnonzero(t == arm) for arm in (0, 1, 2)}
         for _ in range(BOOTSTRAP_REPEATS):
-            idx = rng.integers(0, len(y), size=len(y))
+            # Stratify by randomized assignment arm to preserve the experiment design.
+            idx = np.concatenate([
+                rng.choice(arm_positions[arm], size=len(arm_positions[arm]), replace=True)
+                for arm in (0, 1, 2)
+            ])
             for name, (ipw, dr) in contributions.items():
                 boot[name]["IPW"].append(float(ipw[idx].mean()))
                 boot[name]["DR"].append(float(dr[idx].mean()))
