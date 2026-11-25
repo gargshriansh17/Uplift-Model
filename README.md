@@ -99,15 +99,14 @@ main.py     pipeline runner
 
 ## Getting the data
 
-The raw CSV is not committed. Download it from the [original challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html) and save it as `data/raw/hillstrom.csv`:
+The raw CSV is not committed. The project now uses **scikit-uplift** to fetch the canonical Hillstrom dataset and cache it locally:
 
-```
-mkdir -p data/raw
-curl -L -o data/raw/hillstrom.csv \
-  "http://www.minethatdata.com/Kevin_Hillstrom_MineThatData_E-MailAnalytics_DataMiningChallenge_2008.03.20.csv"
+```powershell
+pip install -r requirements.txt
+python -m src.dataset
 ```
 
-If the direct link is unavailable, use the challenge page above.
+This calls `sklift.datasets.fetch_hillstrom(target_col="all")`, downloads the upstream file if it is not already cached under `data/raw/scikit_uplift/`, validates the expected feature/target schema, and writes the normalized dataset to `data/raw/hillstrom.csv`. The original challenge remains available at the [MineThatData challenge page](https://blog.minethatdata.com/2008/03/minethatdata-e-mail-analytics-and-data.html).
 
 ## How to run
 
@@ -152,3 +151,73 @@ For the control arm, `max_depth` 2 and 3 tie at `num_leaves=3` (they are equival
 - Refit-based (full pipeline) bootstrap intervals that include training uncertainty.
 - Run the X-Learner on the validation split so it is comparable with the other models.
 - Extend the held-out evaluation to the Women's Email arm and add cost/spend modelling.
+
+
+## Methodology upgrades (research-methodology-upgrades branch)
+
+The following extensions are implemented as separate stages so the original results remain reproducible and the held-out test set stays isolated.
+
+### X-Learner validation
+
+The X-Learner now has a dedicated train-fit / validation-evaluate stage. Its outcome models are tuned by inner CV on the training split; imputed treatment effects are learned with inner-CV Ridge models. Validation predictions and scikit-uplift metrics are written to:
+
+- `reports/x_learner_validation_predictions.csv`
+- `reports/x_learner_validation_metrics.csv`
+
+Run: `python -m src.x_learner_validation` or `python main.py x-learner-validation`.
+
+### Nested cross-validation and multiple comparisons
+
+`src/nested_cv.py` performs five outer stratified folds, with inner tuning confined to each outer training fold, for Logistic T-Learner, S-Learner, X-Learner and LightGBM T-Learner. This estimates model-selection performance without using the same fold for tuning and evaluation. It reports scikit-uplift normalized Qini AUC and uplift AUC alongside arm-specific log loss.
+
+`src/multiple_comparison.py` applies Holm's step-down correction to paired outer-fold Qini comparisons. The corrected p-values are exploratory because five outer folds provide limited degrees of freedom; report effect sizes and uncertainty, not just significance.
+
+Run:
+```powershell
+python -m src.nested_cv
+python -m src.multiple_comparison
+```
+
+Outputs are saved under `reports/nested_cv/`. Nested CV is computationally more expensive than the original validation workflow.
+
+### Formal treatment-effect heterogeneity test
+
+`src/heterogeneity_test.py` compares a constant-effect linear probability model with a treatment-by-feature interaction model for both Men's Email vs No Email and Women's Email vs No Email. It reports a joint HC3-robust Wald test of the interaction terms. This is a global test for detectable effect variation, not a guarantee that individual CATE estimates are accurate. The test is exploratory and depends on the linear probability model specification.
+
+Run: `python -m src.heterogeneity_test`.
+
+Output: `reports/heterogeneity/global_interaction_tests.csv`.
+
+### Full three-arm held-out test
+
+The existing three-arm split already reserves a test partition. The new `src/three_arm_final_test.py` refits the Logistic and validation-selected LightGBM arm models on train + validation, then evaluates both email contrasts against No Email and the learned/fixed campaign policies on the untouched three-arm test set. It reports scikit-uplift Qini/AUUC metrics, IPW and doubly-robust policy values, and customer-bootstrap confidence intervals.
+
+Run this only after the three-arm training stages have been completed:
+```powershell
+python main.py three-arm-data three-arm-t-learner three-arm-lightgbm
+python -m src.three_arm_final_test
+```
+
+Output directory: `reports/three_arm/final_test/`. The three-arm test is a one-time evaluation: do not tune models or change the model-selection decision based on these test results.
+
+### CI
+
+GitHub Actions runs `python -m pytest -q` on pushes and pull requests using Python 3.11. The test workflow installs the full requirements file, including scikit-uplift and statsmodels. CI tests are synthetic/unit tests; the workflow does not download Hillstrom or run the computationally expensive training pipeline.
+
+### Updated run order
+
+```powershell
+python -m pip install -r requirements.txt
+python main.py fetch-data
+python main.py all
+python main.py x-learner-validation
+python main.py nested-cv
+python main.py multiple-comparison
+python main.py heterogeneity
+# Train three-arm models, then score the three-arm test exactly once:
+python main.py three-arm-data three-arm-t-learner three-arm-lightgbm
+python main.py three-arm-final-test
+python -m pytest -q
+```
+
+**Important:** New nested-CV, X-Learner validation, heterogeneity and three-arm final-test results are generated by running the commands above; no new numeric findings are claimed in this README until those reports exist. The previously reported two-arm test metrics remain historical results from the earlier pipeline.
