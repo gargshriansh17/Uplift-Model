@@ -26,7 +26,7 @@ def _normalise_columns(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def load_hillstrom_frame(force_refresh: bool = False) -> pd.DataFrame:
+def load_hillstrom_frame() -> pd.DataFrame:
     """Fetch Hillstrom using scikit-uplift and return the canonical dataframe.
 
     scikit-uplift caches the downloaded source under data/raw/scikit_uplift.
@@ -90,6 +90,6 @@ def load_hillstrom_frame(force_refresh: bool = False) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    result = load_hillstrom_frame(force_refresh=True)
+    result = load_hillstrom_frame()
     print(f"Loaded Hillstrom through scikit-uplift: {result.shape}")
     print(result[SEGMENT_COL].value_counts().to_string())
